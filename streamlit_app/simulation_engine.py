@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from streamlit_app.data_manger import DFManager
+from data_manger import DFManager
 
 def run_simulation(
     sim_time: int,
