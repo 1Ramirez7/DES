@@ -14,9 +14,9 @@ Run 'run_streamlit_app.py' in root of directory
 """
 import streamlit as st
 
-from streamlit_app.simulation_engine import run_simulation
-from streamlit_app.ui_components import init_ui
-from streamlit_app.plotting import plot_results
+from simulation_engine import run_simulation
+from ui_components import init_ui
+from plotting import plot_results
 
 def main() -> None:
     st.title("Hill AFB Discrete Event Simulation")
