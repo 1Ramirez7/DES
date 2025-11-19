@@ -107,6 +107,8 @@ def plot_micap_over_time(des_df):
         value_name='time'
     )
     
+    #micap_events = micap_events[micap_events['time'] > 200]   # <-- keep only > 200
+
     # Add change column (+1 for start, -1 for end)
     micap_events['change'] = micap_events['event_type'].apply(
         lambda x: 1 if x == 'micap_start' else -1
@@ -125,4 +127,110 @@ def plot_micap_over_time(des_df):
     ax.grid(True, alpha=0.3)
     ax.set_ylim(bottom=0)
     
+    return fig
+
+
+def plot_wip_over_time(wip_df):
+    """
+    Plot work-in-progress (WIP) levels over time for parts and aircraft.
+    
+    Parameters
+    ----------
+    wip_df : pandas.DataFrame
+        DataFrame with columns: time, parts_fleet, parts_condition_f, 
+        parts_depot, parts_condition_a, aircraft_fleet, aircraft_micap
+    """
+    if len(wip_df) == 0:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        ax1.text(0.5, 0.5, 'No WIP data available', ha='center', va='center')
+        ax2.text(0.5, 0.5, 'No WIP data available', ha='center', va='center')
+        ax1.set_title('Parts WIP Over Time')
+        ax2.set_title('Aircraft WIP Over Time')
+        return fig
+    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+    
+    # Plot 1: Parts in each stage
+    ax1.plot(wip_df['time'], wip_df['parts_fleet'], label='Fleet', linewidth=2)
+    ax1.plot(wip_df['time'], wip_df['parts_condition_f'], label='Condition F', linewidth=2)
+    ax1.plot(wip_df['time'], wip_df['parts_depot'], label='Depot', linewidth=2)
+    ax1.plot(wip_df['time'], wip_df['parts_condition_a'], label='Condition A', linewidth=2)
+    
+    ax1.set_xlabel('Simulation Time')
+    ax1.set_ylabel('Number of Parts')
+    ax1.set_title('Parts Work-in-Progress by Stage')
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot 2: Aircraft status
+    ax2.plot(wip_df['time'], wip_df['aircraft_fleet'], label='Fleet (Active)', linewidth=2, color='green')
+    ax2.plot(wip_df['time'], wip_df['aircraft_micap'], label='MICAP', linewidth=2, color='red')
+    
+    ax2.set_xlabel('Simulation Time')
+    ax2.set_ylabel('Number of Aircraft')
+    ax2.set_title('Aircraft Status Over Time')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    return fig
+
+
+def create_live_wip_plot(wip_df):
+    """
+    Create a live-updating WIP plot for Streamlit display during simulation.
+    
+    Parameters
+    ----------
+    wip_df : pandas.DataFrame
+        Current WIP history with columns: time, parts_fleet, parts_condition_f, 
+        parts_depot, parts_condition_a, aircraft_fleet, aircraft_micap
+    
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure ready for st.pyplot() display
+    """
+    if len(wip_df) == 0:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6))
+        ax1.text(0.5, 0.5, 'Simulation starting...', ha='center', va='center')
+        ax2.text(0.5, 0.5, 'Simulation starting...', ha='center', va='center')
+        ax1.set_title('Parts WIP - Live Update')
+        ax2.set_title('Aircraft Status - Live Update')
+        return fig
+    
+    # Create smaller figure for live updates
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6))
+    
+    # Plot 1: Parts in each stage (simplified for speed)
+    ax1.plot(wip_df['time'], wip_df['parts_fleet'], label='Fleet', linewidth=1.5, alpha=0.8)
+    ax1.plot(wip_df['time'], wip_df['parts_condition_f'], label='Condition F', linewidth=1.5, alpha=0.8)
+    ax1.plot(wip_df['time'], wip_df['parts_depot'], label='Depot', linewidth=1.5, alpha=0.8)
+    ax1.plot(wip_df['time'], wip_df['parts_condition_a'], label='Condition A', linewidth=1.5, alpha=0.8)
+    
+    ax1.set_xlabel('Simulation Time')
+    ax1.set_ylabel('Number of Parts')
+    ax1.set_title('Parts Work-in-Progress - Live Update')
+    ax1.legend(loc='upper right', fontsize=9)
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot 2: Aircraft status
+    ax2.plot(wip_df['time'], wip_df['aircraft_fleet'], label='Fleet (Active)', 
+            linewidth=1.5, alpha=0.8, color='green')
+    ax2.plot(wip_df['time'], wip_df['aircraft_micap'], label='MICAP', 
+            linewidth=1.5, alpha=0.8, color='red')
+    
+    ax2.set_xlabel('Simulation Time')
+    ax2.set_ylabel('Number of Aircraft')
+    ax2.set_title('Aircraft Status - Live Update')
+    ax2.legend(loc='upper right', fontsize=9)
+    ax2.grid(True, alpha=0.3)
+    
+    # Show current time on plots
+    if len(wip_df) > 0:
+        current_time = wip_df['time'].iloc[-1]
+        ax1.axvline(x=current_time, color='black', linestyle='--', alpha=0.5)
+        ax2.axvline(x=current_time, color='black', linestyle='--', alpha=0.5)
+    
+    plt.tight_layout()
     return fig

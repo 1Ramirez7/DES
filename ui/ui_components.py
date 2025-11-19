@@ -3,6 +3,9 @@
 """
 
 import streamlit as st
+from utils import render_allocation_inputs, init_fleet_random, init_depot_random
+import numpy as np
+
 
 def render_sidebar():
     """Render sidebar with simulation parameters matching main_r-code.R exactly."""
@@ -13,7 +16,7 @@ def render_sidebar():
     n_total_parts = st.sidebar.number_input(
         "Total Parts",
         min_value=1,
-        value=35,  # Test value (30 in production)
+        value=1100,  # 35
         step=1,
         help="Total number of parts in the system"
     )
@@ -21,7 +24,7 @@ def render_sidebar():
     n_total_aircraft = st.sidebar.number_input(
         "Total Aircraft",
         min_value=1,
-        value=30,
+        value=900,  # 30
         step=1,
         help="Total number of aircraft in the fleet"
     )
@@ -39,7 +42,7 @@ def render_sidebar():
     analysis_periods = st.sidebar.number_input(
         "Simulation Time (days)",
         min_value=1,
-        value=300,
+        value=4000,
         step=1,
         help="Number of days for analysis period"
     )
@@ -59,7 +62,7 @@ def render_sidebar():
     depot_capacity = st.sidebar.number_input(
         "Depot Capacity",
         min_value=1,
-        value=5,
+        value=30,
         step=1,
         help="Maximum number of parts that can be in the depot at once"
     )
@@ -67,9 +70,31 @@ def render_sidebar():
     # NEW: Part condemn parameters
     st.sidebar.subheader("Part Condemn Parameters")
     
+    """
+    The model is programmed to condemn parts after a specified number of cycles.
+    Randomizing initial cycles requires `condemn_cycle` to be greater than 1.
+     - np.random.randint(1, condemn_cycle)
+     - With condemn_cycle = 1, this is randint(1, 1) which raises ValueError: low >= high
+
+     
+    `SimulationEngine.initialize_depot` is not designed to handle part condemnation.
+
+    The cycle randomization logic avoids generating values that would 
+    immediately cause a part to be condemned.
+
+    Special handling will be required if `condemn_cycle` is ever set to 1.
+
+    - If it is set to 1
+        - edit df_manager._create_condition_a_df to not generate condemn value
+        - a part can't be condemn and in condition A per mdoel logic
+        - this function follows same logic as all other random cycle gen
+    - edit engine.initialize_depot to handle condemnations
+    - continue list
+    """
+
     condemn_cycle = st.sidebar.number_input(
         "Condemn at Cycle",
-        min_value=1,
+        min_value=2,
         value=20,
         step=1,
         help="Cycle number at which parts are condemned and replaced"
@@ -88,7 +113,7 @@ def render_sidebar():
     part_order_lag = st.sidebar.number_input(
         "Part Order Lag (days)",
         min_value=0,
-        value=100,
+        value=365, # 100
         step=1,
         help="Time delay between ordering a new part and it arriving in Condition A"
     )
@@ -101,29 +126,68 @@ def render_sidebar():
         help="Random seed for reproducibility"
     )
 
+    mission_capable_rate = st.sidebar.number_input(
+        "Mission Capable Rate",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.60,
+        step=0.01,
+        format="%.2f",
+        help="The percentage of total aircraft that start in Fleet with a part (0.0 to 1.0)"
+    )
+
+
+# --- NEW: Initial Part Allocation Inputs ---
+    parts_air_dif = n_total_parts - min(n_total_parts, int(np.ceil(mission_capable_rate * n_total_aircraft)))
+    
+    parts_in_depot, parts_in_cond_f, parts_in_cond_a = render_allocation_inputs(
+        n_total_parts=n_total_parts,
+        n_total_aircraft=n_total_aircraft,
+        mission_capable_rate=mission_capable_rate,
+        depot_capacity=depot_capacity,
+        parts_air_dif=parts_air_dif
+    )
+
     
     st.sidebar.markdown("---")
     st.sidebar.subheader("Fleet: Fleet (Part on Aircraft)")
-    sone_mean = st.sidebar.number_input("Mean Duration", value=30.0, min_value=0.0)
-    sone_sd = st.sidebar.number_input("Std Dev", value=10.0, min_value=0.0, key="sone_sd")
+    sone_mean = st.sidebar.number_input("Mean Duration", value=365.0, min_value=1.0)
+    sone_sd = st.sidebar.number_input("Std Dev", value=10.0, min_value=0.01, key="sone_sd")
     
     st.sidebar.subheader("Depot")
-    sthree_mean = st.sidebar.number_input("Mean Duration", value=1.0, min_value=0.0, key="sthree_mean")
-    sthree_sd = st.sidebar.number_input("Std Dev", value=0.2, min_value=0.0, key="sthree_sd")
+    sthree_mean = st.sidebar.number_input("Mean Duration", value=90.0, min_value=0.10, key="sthree_mean")
+    sthree_sd = st.sidebar.number_input("Std Dev", value=1.2, min_value=0.01, key="sthree_sd")
     
+    # Get randomization parameters
+    fleet_rand_params = init_fleet_random()
+    depot_rand_params = init_depot_random()
+    
+    # Combine all parameters
     return {
         'n_total_parts': n_total_parts,
         'n_total_aircraft': n_total_aircraft,
         'sim_time': sim_time,
-        'warmup_periods': warmup_periods,  # NEW - to plot only analysis periods
-        'analysis_periods': analysis_periods,  # NEW - to plot only analysis periods
+        'warmup_periods': warmup_periods,
+        'analysis_periods': analysis_periods,
         'depot_capacity': depot_capacity,
-        'condemn_cycle': condemn_cycle,  # new params for depot logic
-        'condemn_depot_fraction': condemn_depot_fraction, # new params for depot logic
-        'part_order_lag': part_order_lag, # new params for depot logic
+        'condemn_cycle': condemn_cycle,
+        'condemn_depot_fraction': condemn_depot_fraction,
+        'part_order_lag': part_order_lag,
         'random_seed': random_seed,
+        'mission_capable_rate': mission_capable_rate,
+        'parts_in_depot': int(parts_in_depot),
+        'parts_in_cond_f': int(parts_in_cond_f),
+        'parts_in_cond_a': int(parts_in_cond_a),
         'sone_mean': sone_mean,
         'sone_sd': sone_sd,
         'sthree_mean': sthree_mean,
-        'sthree_sd': sthree_sd
+        'sthree_sd': sthree_sd,
+        # Fleet randomization
+        'use_fleet_rand': fleet_rand_params['use_fleet_rand'],
+        'fleet_rand_min': fleet_rand_params['fleet_rand_min'],
+        'fleet_rand_max': fleet_rand_params['fleet_rand_max'],
+        # Depot randomization
+        'use_depot_rand': depot_rand_params['use_depot_rand'],
+        'depot_rand_min': depot_rand_params['depot_rand_min'],
+        'depot_rand_max': depot_rand_params['depot_rand_max']
     }
