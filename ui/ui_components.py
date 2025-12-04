@@ -1,22 +1,31 @@
 """
+UI Components for DES Simulation
 
+Provides Streamlit sidebar widgets for simulation parameter input.
+All parameters match main_r-code.R exactly.
 """
 
 import streamlit as st
-from utils import render_allocation_inputs, init_fleet_random, init_depot_random
+from utils import render_allocation_inputs, init_fleet_random, init_depot_random, solve_weibull_params
 import numpy as np
-
 
 def render_sidebar():
     """Render sidebar with simulation parameters matching main_r-code.R exactly."""
     
     st.sidebar.header("Simulation Parameters")
+    
+    # Toggle for plot rendering
+    render_plots = st.sidebar.checkbox(
+        "Render Plots",
+        value=True,
+        help="Uncheck to skip plot rendering (faster for testing)"
+    )
 
     # Basic parameters
     n_total_parts = st.sidebar.number_input(
         "Total Parts",
         min_value=1,
-        value=1100,  # 35
+        value=26,  # 1100
         step=1,
         help="Total number of parts in the system"
     )
@@ -24,7 +33,7 @@ def render_sidebar():
     n_total_aircraft = st.sidebar.number_input(
         "Total Aircraft",
         min_value=1,
-        value=900,  # 30
+        value=20,  # 900
         step=1,
         help="Total number of aircraft in the fleet"
     )
@@ -42,7 +51,7 @@ def render_sidebar():
     analysis_periods = st.sidebar.number_input(
         "Simulation Time (days)",
         min_value=1,
-        value=4000,
+        value=2000,
         step=1,
         help="Number of days for analysis period"
     )
@@ -62,7 +71,7 @@ def render_sidebar():
     depot_capacity = st.sidebar.number_input(
         "Depot Capacity",
         min_value=1,
-        value=30,
+        value=10,
         step=1,
         help="Maximum number of parts that can be in the depot at once"
     )
@@ -85,7 +94,7 @@ def render_sidebar():
     Special handling will be required if `condemn_cycle` is ever set to 1.
 
     - If it is set to 1
-        - edit df_manager._create_condition_a_df to not generate condemn value
+        - edit depot random function to not generate condemn value
         - a part can't be condemn and in condition A per mdoel logic
         - this function follows same logic as all other random cycle gen
     - edit engine.initialize_depot to handle condemnations
@@ -95,7 +104,7 @@ def render_sidebar():
     condemn_cycle = st.sidebar.number_input(
         "Condemn at Cycle",
         min_value=2,
-        value=20,
+        value=10,
         step=1,
         help="Cycle number at which parts are condemned and replaced"
     )
@@ -113,7 +122,7 @@ def render_sidebar():
     part_order_lag = st.sidebar.number_input(
         "Part Order Lag (days)",
         min_value=0,
-        value=365, # 100
+        value=36, # 100
         step=1,
         help="Time delay between ordering a new part and it arriving in Condition A"
     )
@@ -148,15 +157,61 @@ def render_sidebar():
         parts_air_dif=parts_air_dif
     )
 
+    distribution_selections = ["Normal", "Weibull"]
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Distribution Selection")
+    sone_dist = st.sidebar.selectbox("Fleet Distribution", options=distribution_selections)
+    sthree_dist = st.sidebar.selectbox("Depot Distribution", options=distribution_selections)
+    
+    # --- Weibull Parameter Calculator ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("Weibull Parameter Calculator")
+    st.sidebar.caption("Convert mean and standard deviation to Weibull shape and scale parameters")
+    
+    wei_mean = st.sidebar.number_input(
+        "Mean",
+        value=360.0,
+        min_value=1.0,
+        step=1.0,
+        key="wei_mean"
+    )
+    
+    wei_std = st.sidebar.number_input(
+        "Standard Deviation",
+        value=10.0,
+        min_value=0.01,
+        step=0.1,
+        key="wei_std"
+    )
+    
+    # Calculate Weibull parameters
+    wei_shape, wei_scale = solve_weibull_params(wei_mean, wei_std)
+    
+    if wei_shape is not None and wei_scale is not None:
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            st.metric("Shape (k)", f"{wei_shape:.3f}")
+        with col2:
+            st.metric("Scale (λ)", f"{wei_scale:.3f}")
+    else:
+        st.sidebar.warning("Could not calculate Weibull parameters")
     
     st.sidebar.markdown("---")
     st.sidebar.subheader("Fleet: Fleet (Part on Aircraft)")
-    sone_mean = st.sidebar.number_input("Mean Duration", value=365.0, min_value=1.0)
-    sone_sd = st.sidebar.number_input("Std Dev", value=10.0, min_value=0.01, key="sone_sd")
+    if sone_dist == distribution_selections[0]: #Normal
+        sone_mean = st.sidebar.number_input("Fleet Mean Duration", value=20.0, min_value=1.0)
+        sone_sd = st.sidebar.number_input("Fleet Std Dev", value=2.0, min_value=0.01)
+    elif sone_dist == distribution_selections[1]: #Weibull
+        sone_mean = st.sidebar.number_input("Fleet Shape", value=46.099, min_value=1.0)
+        sone_sd = st.sidebar.number_input("Fleet Scale", value=36.946, min_value=0.01)
     
     st.sidebar.subheader("Depot")
-    sthree_mean = st.sidebar.number_input("Mean Duration", value=90.0, min_value=0.10, key="sthree_mean")
-    sthree_sd = st.sidebar.number_input("Std Dev", value=1.2, min_value=0.01, key="sthree_sd")
+    if sthree_dist == distribution_selections[0]: #Normal
+        sthree_mean = st.sidebar.number_input("Depot Mean Duration", value=20.0, min_value=1.0)
+        sthree_sd = st.sidebar.number_input("Depot Std Dev", value=2.0, min_value=0.01)
+    elif sthree_dist == distribution_selections[1]: #Weibull
+        sthree_mean = st.sidebar.number_input("Depot Shape", value=95.468, min_value=1.0)
+        sthree_sd = st.sidebar.number_input("Depot Scale", value=90.538, min_value=0.01)
     
     # Get randomization parameters
     fleet_rand_params = init_fleet_random()
@@ -164,11 +219,13 @@ def render_sidebar():
     
     # Combine all parameters
     return {
+        'render_plots': render_plots,
         'n_total_parts': n_total_parts,
         'n_total_aircraft': n_total_aircraft,
-        'sim_time': sim_time,
         'warmup_periods': warmup_periods,
         'analysis_periods': analysis_periods,
+        'closing_periods': closing_periods,
+        'sim_time': sim_time,
         'depot_capacity': depot_capacity,
         'condemn_cycle': condemn_cycle,
         'condemn_depot_fraction': condemn_depot_fraction,
@@ -178,6 +235,8 @@ def render_sidebar():
         'parts_in_depot': int(parts_in_depot),
         'parts_in_cond_f': int(parts_in_cond_f),
         'parts_in_cond_a': int(parts_in_cond_a),
+        'sone_dist': sone_dist,
+        'sthree_dist': sthree_dist,
         'sone_mean': sone_mean,
         'sone_sd': sone_sd,
         'sthree_mean': sthree_mean,
