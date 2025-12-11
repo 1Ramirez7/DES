@@ -326,7 +326,7 @@ class Initialization:
             first_micap = micap_pa_rm
             
             # Calculate install timing
-            d4_install = self.engine.calculate_install_duration()
+            d4_install = 0
             s4_install_start = condition_a_start
             s4_install_end = s4_install_start + d4_install
             

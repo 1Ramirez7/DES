@@ -202,8 +202,7 @@ def init_fleet_random():
     
     Returns dict with: use_fleet_rand, fleet_rand_min, fleet_rand_max
     """
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Fleet Duration Randomization")
+    st.sidebar.markdown("**Fleet Duration Randomization**")
     
     use_fleet_rand = st.sidebar.checkbox(
         "Randomize Fleet Durations",
@@ -246,8 +245,6 @@ def init_fleet_random():
             fleet_rand_min = 0.01
             fleet_rand_max = 1.0
         
-        st.sidebar.info(f"Multiplier range: {fleet_rand_min:.2f} - {fleet_rand_max:.2f}")
-        
     else:
         fleet_rand_min = 1.0
         fleet_rand_max = 1.0
@@ -267,8 +264,7 @@ def init_depot_random():
     
     Returns dict with: use_depot_rand, depot_rand_min, depot_rand_max
     """
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Depot Duration Randomization")
+    st.sidebar.markdown("**Depot Duration Randomization**")
     
     use_depot_rand = st.sidebar.checkbox(
         "Randomize Depot Durations",
@@ -310,8 +306,6 @@ def init_depot_random():
             st.sidebar.error("⚠️ Min must be less than Max")
             depot_rand_min = 0.01
             depot_rand_max = 1.0
-        
-        st.sidebar.info(f"Depot multiplier range: {depot_rand_min:.2f} - {depot_rand_max:.2f}")
         
     else:
         depot_rand_min = 1.0

@@ -17,6 +17,7 @@ try:
     from .ph_cda import ConditionAState
     from .ph_new_part import NewPart
     from .ds.data_science import DataSets
+    from .post_sim import PostSim  # === POSTSIM CLASS - NEW ===
 except ImportError:
     # Fall back to absolute imports (when run directly)
     from initialization import Initialization
@@ -26,6 +27,7 @@ except ImportError:
     from ph_cda import ConditionAState
     from ph_new_part import NewPart
     from ds.data_science import DataSets
+    from post_sim import PostSim
 
 def append_event(current_event, new_event):
     return f"{current_event}, {new_event}"
@@ -62,7 +64,7 @@ class SimulationEngine:
         self.ac_manager = AircraftManager() # Manage Aircrafts
         self.cond_a_state = ConditionAState()  # Manage Condition A parts
         self.new_part_state = NewPart(n_total_parts=params['n_total_parts'])  # Manage new parts on order
-        self.datasets = DataSets()
+        self.datasets = DataSets(warmup_periods=params['warmup_periods'], closing_periods=params['closing_periods'], sim_time=params['sim_time'], use_buffer=params.get('use_buffer', False))
 
         # Event tracking for progress display 777
         self.event_counts = {
@@ -89,12 +91,6 @@ class SimulationEngine:
             return max(0, np.random.normal(self.params['sone_mean'], self.params['sone_sd']))
         elif self.params['sone_dist'] == "Weibull":
             return max(0, np.random.weibull(self.params['sone_mean']) * self.params['sone_sd'])
-
-    def calculate_condition_f_duration(self):
-        """
-        Not in use, delete or leave as spacer
-        """
-        return 0
     
     def calculate_depot_duration(self):
         """
@@ -105,13 +101,6 @@ class SimulationEngine:
             return max(0, np.random.normal(self.params['sthree_mean'], self.params['sthree_sd']))
         elif self.params['sthree_dist'] == "Weibull":
             return max(0, np.random.weibull(self.params['sthree_mean']) * self.params['sthree_sd'])
-    
-    def calculate_install_duration(self):
-        """
-        There is no install duration to account for so leaving old install
-        duration formula set to zero. Laving it as a sapcer for possibly other uses. 
-        """
-        return 0 
     
     # ==========================================================================
     # EVENT SCHEDULING METHODS
@@ -142,16 +131,6 @@ class SimulationEngine:
             (event_time, self.event_counter, event_type, entity_id)
         )
         self.event_counter += 1
-    
-    # ==========================================================================
-    # HELPER FUNCTIONS: ID GENERATION & ADD events to DFs
-    # ==========================================================================
-    
-    # remove: def get_next_sim_id(self): PartManager replacing
-    # remove: def get_next_des_id(self): AircraftManager replacing
-    
-    # remove: def add_sim_event PartManager replacing
-    # remove: def add_des_event AircraftManager replacing
     
     # ==========================================================================
     # HELPER FUNCTION: PROCESS NEW CYCLE STAGES (After Installation Completes)
@@ -450,7 +429,7 @@ class SimulationEngine:
             new_event = eventtypemi
             add_event_p = append_event(current_event, new_event)
             # Calculate install duration
-            d4_install = self.calculate_install_duration()
+            d4_install = 0
             s4_install_start = s3_end
             s4_install_end = s4_install_start + d4_install
             micap_duration = s3_end - first_micap['micap_start']
@@ -560,7 +539,7 @@ class SimulationEngine:
         if first_available is not None:
             
             # Calculate install duration
-            d4_install = self.calculate_install_duration()
+            d4_install = 0
             s4_install_start = s1_end
             s4_install_end = s4_install_start + d4_install
             
@@ -733,7 +712,7 @@ class SimulationEngine:
             first_micap = micap_npa_rm # do i need this if replace first_micap with micap_npa_rm
             
             # Calculate install timing
-            d4_install = self.calculate_install_duration()
+            d4_install = 0
             s4_install_start = condition_a_start
             s4_install_end = s4_install_start + d4_install
             
@@ -946,26 +925,34 @@ class SimulationEngine:
         
         # Convert PartManager and AircraftManager data to DataFrames for analysis
         self.datasets.build_part_ac_df(
-            self.part_manager.get_all_parts_data_df,
-            self.part_manager.compute_fleet_count_over_time,
-            self.part_manager.compute_all_counts_over_time,
-            self.ac_manager.get_all_ac_data_df,
-            self.cond_a_state.get_log_dataframe)
+            get_all_parts_data_df=self.part_manager.get_all_parts_data_df,
+            get_ac_df_func=self.ac_manager.get_all_ac_data_df,
+            get_wip_end=self.part_manager.get_wip_end,
+            get_wip_raw=self.part_manager.get_wip_raw,
+            get_wip_ac_end=self.ac_manager.get_wip_ac_end,
+            get_wip_ac_raw=self.ac_manager.get_wip_ac_raw,
+            sim_time=self.params['sim_time'],
+        )
+        self.datasets.filter_by_remove_days()
         
-        # Build WIP from micap_state log (fast O(N) approach)
-        # NOT best to track MICAP, when no MICAP it is not logging
-        # need to manually pass sim end time and have plots calculate 
-        # that last point in micap log goes till sim_end
-        micap_log_df = self.micap_state.get_log_dataframe()
-        self.datasets.build_wip_from_micap_log(
-            micap_log_df, 
-            n_total_aircraft=self.params['n_total_aircraft'])
+        # === POSTSIM CLASS - NEW ===
+        # Create PostSim to compute all stats and figures inside engine.run()
+        # This ensures multi-scenario runs always get correct results tied to this run's params
+        post_sim = PostSim(
+            datasets=self.datasets,
+            event_counts=self.event_counts.copy(),
+            params=self.params,
+            allocation=self.allocation
+        )
         
-        # Build results dictionary with event counts and datasets
-        # datasets is created fresh each run() call - prevents stale data in multi-scenario runs
+        # Build results dictionary with event counts, datasets, and post_sim
+        # datasets is created fresh each run() call - prevents cache data in multi-scenario runs
         validation_results = {
             'event_counts': self.event_counts.copy(),
-            'datasets': self.datasets
+            'datasets': self.datasets,
+            'post_sim': post_sim
         }
+        
+        # i'll re add clear code later
         
         return validation_results

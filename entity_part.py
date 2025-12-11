@@ -24,28 +24,10 @@ class PartManager:
         self.active = {}  # {sim_id: record} - dictionary storage for O(1) lookups
         self.next_sim_id = 0  # ID counter (replacing current_sim_row)
         self.part_log = []  # Completed cycles
-        self.wip_log = [] # tracking wip maybe
     
     # ===========================================================
     # CORE OPERATIONS: ID GENERATION
     # ===========================================================
-
-    def add_wip(self, **fields): # handle_part_completes_depot
-        time=0
-        record = { # fleet_start
-            'fleet_start': time, 
-            'fleet_end': np.nan,
-            'fleet_count': +1,
-            'depot_start': "NA",
-            'depot_end': "if de_fs",
-            'depot_count': -1,
-            'condition_a_start': "NA",
-            'condition_a_end': "if cda_fs",
-            'cda_count': -1
-        }
-
-        self.wip_log.append(record.copy())
-        return record
 
     def get_next_sim_id(self):
         """
@@ -176,15 +158,7 @@ class PartManager:
         
         Args:
             sim_id (int): Simulation ID of the part to retrieve
-
-        temp comment: this method replaces old way of searching sim_id row in sim_df
-            * OLD way - (searches entire DataFrame)
-            filled_sim_df = self.df.sim_df.iloc[:self.df.current_sim_row]
-            part_row = filled_sim_df[filled_sim_df['sim_id'] == sim_id].iloc[0]
-
-            * NEW way - fast (O(1) dictionary lookup)
-            active_part = self.part_manager.get_part(sim_id)
-            
+        
         Returns:
             dict or None: Part record if found, None if not found
         """
@@ -210,16 +184,6 @@ class PartManager:
         Args:
             sim_id (int): Simulation ID of the part to update
             updates (dict): Dictionary of {field_name: value} to update
-        
-        Temp comment: 
-            * OLD way - using .at[] for DataFrame scalar assignment
-            self.df.sim_df.at[part_row_idx, 'condition_a_duration'] = condition_a_duration
-            self.df.sim_df.at[part_row_idx, 'install_duration'] = d4_install
-            
-            * NEW way - direct dictionary update
-            self.engine.part_manager.update_fields(sim_id, {
-            'condition_a_duration': condition_a_duration,
-            'install_duration': d4_install})
 
         Returns:
             bool: True if part found and updated, False if part not found
@@ -367,24 +331,6 @@ class PartManager:
     def get_all_parts_data_df(self):
         """
         Export all parts (active + completed) as pandas DataFrame.
-        * all_parts_df will be the name of the dataframe. 
-        * will be use via data_manager.py. From an engineering perspective, part_manager is like the chef that prepares the food
-        * while data_manager is the waiter. We wouldn't have the custumor go straight to chef for the food. 
-
-        all_parts_df
-        Combines active parts and completed cycles into single DataFrame
-        for analysis and export. Replacement for df_manager.sim_df.
-
-        Sample Usage:
-            engine.run: 
-                self.datasets.build_part_ac_df(
-                    self.part_manager.get_all_parts_data_df,
-                    self.ac_manager.get_all_ac_data_df) # includes ac manager class
-            Can then be used via datasets class
-            main.py: datasets.all_parts_df
-        
-        Returns:
-            pd.DataFrame: All parts with complete sim_df schema
         """
         all_parts = self.get_all_parts_data()
         
@@ -407,103 +353,21 @@ class PartManager:
     # UTILITY: VALIDATION & MAINTENANCE 
     # ===========================================================
 
-
-    def add_wip(self, **fields):
-        record = {
-            'fleet_start': fields.get('fleet_start', np.nan), 
-            'fleet_end': fields.get('fleet_end', np.nan),
-            'fleet_count': fields.get('fleet_count', np.nan),
-            'condition_f_start': fields.get('condition_f_start', np.nan),
-            'condition_f_end': fields.get('condition_f_end', np.nan),
-            'cdf_count': fields.get('cdf_count', np.nan),
-            'depot_start': fields.get('depot_start', np.nan),
-            'depot_end': fields.get('depot_end', np.nan),
-            'depot_count': fields.get('depot_count', np.nan),
-            'condition_a_start': fields.get('condition_a_start', np.nan),
-            'condition_a_end': fields.get('condition_a_end', np.nan),
-            'cda_count': fields.get('cda_count', np.nan)
-        }
-
-    def compute_fleet_count_over_time(self):
+    def get_wip_end(self, sim_time, interval=5):
         """
-        Compute fleet count over time from part_log.
+        Get WIP counts over time with forward fill.
         """
-        n = len(self.part_log)
-        fleet_starts = np.array([r['fleet_start'] for r in self.part_log], dtype=np.float64)
-        fleet_ends = np.array([r['fleet_end'] for r in self.part_log], dtype=np.float64)
+        from ds.helpers import compute_unified_wip
         
-        # Mask for non-NaN values
-        start_mask = ~np.isnan(fleet_starts)
-        end_mask = ~np.isnan(fleet_ends)
+        all_parts = self.get_all_parts_data()
+        return compute_unified_wip(all_parts, sim_time, interval)
+    
 
-        valid_starts = fleet_starts[start_mask]
-        valid_ends = fleet_ends[end_mask]
-        
-        # Build index and sum arrays
-        indices = np.concatenate([valid_starts, valid_ends])
-        sums = np.concatenate([np.ones(len(valid_starts), dtype=np.int8), 
-                               -np.ones(len(valid_ends), dtype=np.int8)])
-        
-        sort_order = np.argsort(indices)
-        indices = indices[sort_order]
-        sums = sums[sort_order]
-        
-        # Cumulative sum for count
-        counts = np.cumsum(sums)
-        
-        # Return as DataFrame (single DataFrame creation at end)
-        return pd.DataFrame({'index': indices, 'sum': sums, 'count': counts})
-
-    def compute_all_counts_over_time(self):
+    def get_wip_raw(self):
         """
-        Compute count over time for fleet, condition_f, depot, and condition_a.
+        Get raw WIP counts (no interpolation/forward fill).
         """
-        if not self.part_log:
-            empty_df = pd.DataFrame(columns=['index', 'sum', 'count'])
-            return {
-                'fleet': empty_df.copy(),
-                'condition_f': empty_df.copy(),
-                'depot': empty_df.copy(),
-                'condition_a': empty_df.copy()
-            }
+        from ds.helpers import compute_raw_wip
         
-        # Pre-extract all arrays once
-        fleet_starts = np.array([r['fleet_start'] for r in self.part_log], dtype=np.float64)
-        fleet_ends = np.array([r['fleet_end'] for r in self.part_log], dtype=np.float64)
-        cdf_starts = np.array([r['condition_f_start'] for r in self.part_log], dtype=np.float64)
-        cdf_ends = np.array([r['condition_f_end'] for r in self.part_log], dtype=np.float64)
-        depot_starts = np.array([r['depot_start'] for r in self.part_log], dtype=np.float64)
-        depot_ends = np.array([r['depot_end'] for r in self.part_log], dtype=np.float64)
-        cda_starts = np.array([r['condition_a_start'] for r in self.part_log], dtype=np.float64)
-        cda_ends = np.array([r['condition_a_end'] for r in self.part_log], dtype=np.float64)
-        
-        def _compute_count(starts, ends):
-            """Helper to compute count for a start/end pair."""
-            start_mask = ~np.isnan(starts)
-            end_mask = ~np.isnan(ends)
-            
-            valid_starts = starts[start_mask]
-            valid_ends = ends[end_mask]
-            
-            if len(valid_starts) == 0 and len(valid_ends) == 0:
-                return pd.DataFrame(columns=['index', 'sum', 'count'])
-            
-            indices = np.concatenate([valid_starts, valid_ends])
-            sums = np.concatenate([
-                np.ones(len(valid_starts), dtype=np.int8),
-                -np.ones(len(valid_ends), dtype=np.int8)
-            ])
-            
-            sort_order = np.argsort(indices)
-            indices = indices[sort_order]
-            sums = sums[sort_order]
-            counts = np.cumsum(sums)
-            
-            return pd.DataFrame({'index': indices, 'sum': sums, 'count': counts})
-        
-        return {
-            'fleet': _compute_count(fleet_starts, fleet_ends),
-            'condition_f': _compute_count(cdf_starts, cdf_ends),
-            'depot': _compute_count(depot_starts, depot_ends),
-            'condition_a': _compute_count(cda_starts, cda_ends)
-        }
+        all_parts = self.get_all_parts_data()
+        return compute_raw_wip(all_parts)

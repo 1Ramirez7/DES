@@ -145,15 +145,7 @@ class AircraftManager:
         
         Args:
             des_id (int): DES event ID of the aircraft to retrieve
-
-        temp comment: this method replaces old way of searching des_id row in des_df
-            * OLD way - (searches entire DataFrame)
-            filled_des_df = self.df.des_df.iloc[:self.df.current_des_row]
-            ac_row = filled_des_df[filled_des_df['des_id'] == des_id].iloc[0]
-
-            * NEW way - fast (O(1) dictionary lookup)
-            active_aircraft = self.ac_manager.get_ac(des_id)
-            
+        
         Returns:
             dict or None: Aircraft record if found, None if not found
         """
@@ -180,17 +172,6 @@ class AircraftManager:
             des_id (int): DES event ID of the aircraft to update
             updates (dict): Dictionary of {field_name: value} to update
         
-        Temp comment: 
-            * OLD way - using .at[] for DataFrame scalar assignment
-            self.df.des_df.at[row_idx, 'micap_duration'] = micap_duration
-            self.df.des_df.at[row_idx, 'install_end'] = s4_install_end
-            
-            * NEW way - direct dictionary update
-            self.ac_manager.update_fields(des_id, {
-                'micap_duration': micap_duration,
-                'install_end': s4_install_end
-            })
-
         Returns:
             bool: True if aircraft found and updated, False if aircraft not found
         """
@@ -309,17 +290,11 @@ class AircraftManager:
         * will be used via data_manager.py. From an engineering perspective, ac_manager is like the chef that prepares the food
         * while data_manager is the waiter. We wouldn't have the customer go straight to chef for the food. 
 
-        all_ac_dict_df
-        Combines active aircraft and completed cycles into single DataFrame
-        for analysis and export.
 
         Sample Usage:
             engine.run: self.df.all_ac_dict_df = self.ac_manager.get_all_ac_data_df()
             Can then be used via data_manager class
             main.py: df_manager.all_ac_dict_df
-        
-        Returns:
-            pd.DataFrame: All aircraft with complete des_df schema
         """
         all_ac_dict = self.get_all_ac_data()
         
@@ -382,3 +357,22 @@ class AircraftManager:
     # ===========================================================
     # UTILITY: VALIDATION & MAINTENANCE 
     # ===========================================================
+
+    def get_wip_ac_end(self, sim_time, interval=5):
+        """
+        Get WIP counts over time with forward fill for aircraft.
+        """
+        from ds.helpers import compute_unified_wip_ac
+        
+        all_ac = self.get_all_ac_data()
+        return compute_unified_wip_ac(all_ac, sim_time, interval)
+    
+
+    def get_wip_ac_raw(self):
+        """
+        Get raw event counts (no interpolation/forward fill) for aircraft.
+        """
+        from ds.helpers import compute_raw_wip_ac
+        
+        all_ac = self.get_all_ac_data()
+        return compute_raw_wip_ac(all_ac)
